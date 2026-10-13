@@ -12,58 +12,59 @@ const path = require('node:path');
  const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
  const evaluate=async expression=>{const result=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);return result.result.value;};
  try{
- await send('Runtime.enable');await send('Page.enable');
- await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});
- await send('Page.navigate',{url:pathToFileURL(path.resolve(__dirname,'../index.html')).href+'#email'});
- await evaluate(`new Promise((resolve,reject)=>{let n=0;const timer=setInterval(()=>{if(document.getElementById('email-status')?.textContent){clearInterval(timer);resolve(true);}else if(++n>200){clearInterval(timer);reject(Error('Page loading timed out'));}},50);})`);
- await evaluate(`window.confirm=()=>true;document.querySelector('#email-reset').click();`);
- assert.equal(await evaluate(`document.querySelector('#email').hidden`),false);
- assert.equal(await evaluate(`document.querySelector('#email-status').textContent`),'미리보기 업데이트 완료');
- assert.equal(await evaluate(`document.querySelectorAll('#email-block-list button').length`),6);
- // Drag first block after the third and ensure the selected block stays selected.
- await evaluate(`(()=>{const rows=document.querySelectorAll('#email-block-list button'),dt=new DataTransfer(),r=rows[2].getBoundingClientRect();rows[0].dispatchEvent(new DragEvent('dragstart',{dataTransfer:dt,bubbles:true}));rows[2].dispatchEvent(new DragEvent('dragover',{dataTransfer:dt,clientY:r.bottom-1,bubbles:true,cancelable:true}));rows[2].dispatchEvent(new DragEvent('drop',{dataTransfer:dt,clientY:r.bottom-1,bubbles:true,cancelable:true}));})()`);
- assert.ok(await evaluate(`document.querySelectorAll('#email-block-list button')[2].textContent.includes('WORK TOOLS')`));
- assert.ok(await evaluate(`document.querySelector('#email-inspector textarea').value.includes('전하고 싶은 이야기')`));
- assert.ok(await evaluate(`document.querySelector('#email-code').textContent.indexOf('WORK TOOLS')>document.querySelector('#email-code').textContent.indexOf('전하고 싶은 이야기')`));
- await evaluate(`document.querySelectorAll('#email-block-list button')[2].dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',altKey:true,bubbles:true,cancelable:true}));`);
- assert.ok(await evaluate(`document.querySelectorAll('#email-block-list button')[1].textContent.includes('WORK TOOLS')`));
- await evaluate(`document.querySelector('#email-reset').click();`);
- assert.equal(await evaluate(`document.querySelectorAll('#email .email-fold').length`),4);
- assert.equal(await evaluate(`Array.from(document.querySelectorAll('#email .email-fold')).every(panel=>{const summary=panel.querySelector('summary');summary.click();const closed=!panel.open && getComputedStyle(panel.querySelector('.email-fold-body')).display==='none';summary.click();return closed&&panel.open;})`),true);
- assert.equal(await evaluate(`Array.from(document.querySelectorAll('#email-block-list button')).every(button=>{const panel=button.closest('.panel').getBoundingClientRect(),rect=button.getBoundingClientRect();return rect.left>=panel.left&&rect.right<=panel.right;})`),true);
- await evaluate(`document.querySelectorAll('#email-inspector input[type=number]')[0].value=42;document.querySelectorAll('#email-inspector input[type=number]')[0].dispatchEvent(new Event('input'));document.querySelector('#email-tab-mjml').click();document.querySelector('#email-width').value=720;document.querySelector('#email-width').dispatchEvent(new Event('change'));`);
- // Change width via input, then blur, matching normal typing.
- await evaluate(`document.querySelector('#email-width').value=720;document.querySelector('#email-width').dispatchEvent(new Event('input'));document.querySelector('#email-width').dispatchEvent(new Event('change'));`);
- assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('font-size="42px"') && document.querySelector('#email-code').textContent.includes('width="720px"')`));
- for(let i=0;i<6;i++)await evaluate(`document.querySelectorAll('#email-add-blocks button')[${i}].click()`);
- assert.equal(await evaluate(`document.querySelectorAll('#email-block-list button').length`),12);
- assert.equal(await evaluate(`document.querySelector('#email-status').textContent`),'미리보기 업데이트 완료');
- await evaluate(`document.querySelector('#email-duplicate').click();document.querySelector('#email-up').click();document.querySelector('#email-down').click();document.querySelector('#email-delete').click();`);
- assert.equal(await evaluate(`document.querySelectorAll('#email-block-list button').length`),12);
- await evaluate(`document.querySelector('#email-mobile').click();document.querySelector('#email-tab-html').click();`);
- assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('<!doctype html>') && document.querySelector('#email-preview').classList.contains('mobile')`));
- assert.equal(await evaluate(`document.querySelector('#email-save-html').disabled`),false);
- // Confirm that rendered HTML, rather than a hand-built approximation, drives the preview.
- assert.equal(await evaluate(`document.querySelector('#email-preview').srcdoc===document.querySelector('#email-code').textContent`),true);
- await evaluate(`document.querySelector('#email-desktop').click();document.querySelector('#email-tab-mjml').click();`);
+ await send('Runtime.enable');await send('Page.enable');await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});await send('Page.navigate',{url:pathToFileURL(path.resolve(__dirname,'../index.html')).href+'#email'});
+ await evaluate(`new Promise((resolve,reject)=>{let n=0;const t=setInterval(()=>{if(document.querySelector('#email-reset')?.onclick){clearInterval(t);resolve();}else if(++n>200){clearInterval(t);reject(Error('Loading timed out'));}},30)})`);
+ await evaluate(`window.confirm=()=>true;document.querySelector('#email-reset').click();window.emailPreviewDoc=()=>document.querySelector('#email-preview').contentDocument;`);
+ const waitPreview=()=>evaluate(`new Promise((resolve,reject)=>{let n=0;const t=setInterval(()=>{const doc=emailPreviewDoc();if(doc?.querySelector('.email-insert-toggle')&&doc.querySelectorAll('[data-email-block]').length===document.querySelectorAll('#email-block-list button').length){clearInterval(t);resolve();}else if(++n>200){clearInterval(t);reject(Error('Preview timed out'));}},30)})`);
+ await waitPreview();
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-email-block]').length`),0);
+ assert.equal(await evaluate(`emailPreviewDoc().querySelector('.email-insert-choices').hidden`),true);
+ assert.equal(await evaluate(`document.querySelectorAll('.email-sidebar>details').length`),1);
+ await evaluate(`emailPreviewDoc().querySelector('.email-insert-toggle').click()`);
+ assert.equal(await evaluate(`emailPreviewDoc().querySelector('.email-insert-choices').hidden`),false);
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-block-type]').length`),6);
  if(process.env.EMAIL_SCREENSHOT){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(process.env.EMAIL_SCREENSHOT,Buffer.from(shot.data,'base64'));}
- await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
- assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth`),true);
- await evaluate(`document.querySelectorAll('#email-block-list button')[0].click();document.querySelector('#email-inspector textarea').value='<script>alert(1)</script> & hello';document.querySelector('#email-inspector textarea').dispatchEvent(new Event('input'));document.querySelector('#email-inspector textarea').dispatchEvent(new Event('change'));`);
- assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('&lt;script&gt;')`));
- // Delete every block, then recover by adding a new one.
- await evaluate(`while(document.querySelectorAll('#email-block-list button').length)document.querySelector('#email-delete').click();document.querySelector('#email-add-blocks button').click();`);
- assert.equal(await evaluate(`document.querySelectorAll('#email-block-list button').length`),1);
- assert.equal(await evaluate(`document.querySelector('#email-status').textContent`),'미리보기 업데이트 완료');
- await evaluate(`document.querySelector('#email-surface').value='#fef3dd';document.querySelector('#email-surface').dispatchEvent(new Event('input'));document.querySelector('#email-surface').dispatchEvent(new Event('change'));`);
- assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('<mj-section background-color="#fef3dd"')`));
- // Capture exported blobs and verify the HTML download matches the compiled preview.
- await evaluate(`window.emailTestDownloads=[];window.download=(blob,name)=>window.emailTestDownloads.push({blob,name});document.querySelector('#email-save-html').click();document.querySelector('#email-save-mjml').click();document.querySelector('#email-project-save').click();`);
+ const types=['image','text','button','divider','columns','spacer'];
+ for(let i=0;i<types.length;i++){
+ await evaluate(`(()=>{const p=emailPreviewDoc().querySelector('.email-preview-insert.last');if(p.querySelector('.email-insert-choices').hidden)p.querySelector('.email-insert-toggle').click();p.querySelector('[data-block-type="${types[i]}"]').click();})()`);await waitPreview();
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-email-block]').length`),i+1);
+ assert.ok(await evaluate(`document.querySelector('#email-inspector-title').textContent.includes('${({image:'이미지',text:'텍스트',button:'버튼',divider:'구분선',columns:'2단 텍스트',spacer:'여백'})[types[i]]}')`));
+ }
+ // In-place text editing is reflected in MJML and kept as plain text.
+ await evaluate(`(()=>{const el=emailPreviewDoc().querySelector('[data-email-block="1"] [contenteditable="plaintext-only"]');el.focus();el.innerText='직접 수정한 제목';el.dispatchEvent(new InputEvent('input',{bubbles:true}));})()`);
+ assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('직접 수정한 제목')`));
+ await evaluate(`(()=>{const weight=[...document.querySelectorAll('#email-inspector select')].find(el=>el.options.length===9);weight.value='700';weight.dispatchEvent(new Event('input'));weight.dispatchEvent(new Event('change'));})()`);await waitPreview();
+ assert.ok(await evaluate(`document.querySelector('#email-code').textContent.includes('font-weight="700"')`));
+ assert.equal(await evaluate(`emailPreviewDoc().querySelector('[data-email-block="1"] [contenteditable="plaintext-only"]').style.fontWeight`),'700');
+ // Exercise real mouse input rather than synthetic DragEvent dispatch.
+ await evaluate(`document.querySelector('#email-preview').scrollIntoView({block:'center'});emailPreviewDoc().querySelector('[data-email-block="0"]').click();`);
+ const dragPoints=await evaluate(`(()=>{const frame=document.querySelector('#email-preview').getBoundingClientRect(),doc=emailPreviewDoc(),handle=doc.querySelector('[data-email-block="0"] .email-preview-drag').getBoundingClientRect(),target=doc.querySelector('[data-email-block="2"]').getBoundingClientRect();return {x:frame.left+handle.left+handle.width/2,y:frame.top+handle.top+handle.height/2,toX:frame.left+target.left+target.width/2,toY:frame.top+target.bottom-2};})()`);
+ await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:dragPoints.x,y:dragPoints.y});
+ await send('Input.dispatchMouseEvent',{type:'mousePressed',x:dragPoints.x,y:dragPoints.y,button:'left',buttons:1,clickCount:1});
+ for(let step=1;step<=8;step++)await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:dragPoints.x+(dragPoints.toX-dragPoints.x)*step/8,y:dragPoints.y+(dragPoints.toY-dragPoints.y)*step/8,button:'left',buttons:1});
+ await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:dragPoints.toX,y:dragPoints.toY,button:'left',buttons:0,clickCount:1});await waitPreview();
+ assert.ok(await evaluate(`document.querySelectorAll('#email-block-list button')[2].textContent.includes('이미지')`));
+ // Selecting an image exposes URL/alt/width controls, then a button exposes its link.
+ await evaluate(`emailPreviewDoc().querySelector('[data-email-block="2"]').click()`);
+ assert.ok(await evaluate(`document.querySelector('#email-inspector').textContent.includes('이미지 URL')`));
+ await evaluate(`emailPreviewDoc().querySelector('[data-email-block="1"]').click()`);
+ assert.ok(await evaluate(`document.querySelector('#email-inspector').textContent.includes('이동할 주소')`));
+ await evaluate(`emailPreviewDoc().querySelector('[data-email-block="1"] button[aria-label="블록 복제"]').click()`);await waitPreview();
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-email-block]').length`),7);
+ await evaluate(`emailPreviewDoc().querySelector('[data-email-block="2"] button[aria-label="블록 삭제"]').click()`);await waitPreview();
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-email-block]').length`),6);
+ await evaluate(`document.querySelector('#email-tab-html').click()`);
+ assert.equal(await evaluate(`/email-inline-tools|contenteditable|data-email-block|email-preview-block-|email-insert/.test(document.querySelector('#email-code').textContent)`),false);
+ await evaluate(`window.emailTestDownloads=[];window.download=(blob,name)=>emailTestDownloads.push({blob,name});document.querySelector('#email-save-html').click();document.querySelector('#email-save-mjml').click();document.querySelector('#email-project-save').click();`);
  assert.equal(await evaluate(`emailTestDownloads.length`),3);
- assert.equal(await evaluate(`emailTestDownloads[0].blob.text().then(t=>t===document.querySelector('#email-preview').srcdoc)`),true);
- assert.ok(await evaluate(`emailTestDownloads[1].blob.text().then(t=>t.startsWith('<mjml'))`));
- assert.equal(await evaluate(`emailTestDownloads[2].blob.text().then(t=>JSON.parse(t).state.blocks.length)`),1);
- assert.deepEqual(errors,[]);
- console.log('PASS: real browser compilation, six block types, typography/width changes, reorder/duplicate/delete, HTML preview, mobile layout, escaping and empty-state recovery.');
+ assert.ok(await evaluate(`emailTestDownloads[0].blob.text().then(t=>t.includes('직접 수정한 제목')&&!t.includes('email-insert'))`));
+ assert.equal(await evaluate(`emailTestDownloads[2].blob.text().then(t=>JSON.parse(t).state.blocks.length)`),6);
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ assert.equal(await evaluate(`document.documentElement.scrollWidth<=innerWidth`),true);
+ // Empty state recovers after deleting everything using preview controls.
+ await waitPreview();for(let i=0;i<6;i++){await evaluate(`emailPreviewDoc().querySelector('[data-email-block="0"] button[aria-label="블록 삭제"]').click()`);await waitPreview();}
+ assert.equal(await evaluate(`emailPreviewDoc().querySelectorAll('[data-email-block]').length`),0);
+ assert.equal(await evaluate(`emailPreviewDoc().querySelector('.email-insert-choices').hidden`),true);
+ assert.deepEqual(errors,[]);console.log('PASS: empty canvas, six-type palette, direct editing, preview drag/drop, type-specific settings, duplicate/delete, clean exports, mobile and empty-state recovery.');
  }finally{await send('Page.close').catch(()=>{});ws.close();}
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});
